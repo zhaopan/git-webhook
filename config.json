@@ -1,0 +1,24 @@
+{
+    "applications": [
+        {
+            "name": "zhaopan.api",
+            "conf": {
+                "repo_path": "/mnt/www/webapi",
+                "docker_compose_file": "docker-compose.yml",
+                "use_docker_compose": false,
+                "repo_branch": "master",
+                "build_bash": "npm update -g"
+            }
+        },
+        {
+            "name": "zhaopan.gogo",
+            "conf": {
+                "repo_path": "/mnt/www/gogo",
+                "docker_compose_file": "docker-compose.yml",
+                "use_docker_compose": false,
+                "repo_branch": "dev",
+                "build_bash": "composer update"
+            }
+        }
+    ]
+}

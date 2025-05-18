@@ -1,0 +1,26 @@
+version: "3.8"
+services:
+  webhook-handler:
+    build: .
+    image: webhook-handler
+    container_name: webhook-handler
+    restart: always
+    privileged: true
+    ports:
+      - "10843:8080"
+    volumes:
+      - /mnt/www:/mnt/www
+      - ./devops.log:/app/devops.log
+    environment:
+      - WEBHOOK_SECRET=<WEBHOOK_SECRET>
+      - PORT=8080
+      - APP_CONFIG_FILE=config.json
+      - ENABLE_FILE_LOGGING=true
+    networks:
+      backend:
+        ipv4_address: ${WEBHOOK_IP}
+
+networks:
+  backend:
+    name: backend
+    external: true

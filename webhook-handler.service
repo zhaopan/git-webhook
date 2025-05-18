@@ -1,0 +1,16 @@
+[Unit]
+Description=Webhook Handler Service
+After=network.target local-fs.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/mnt/lnmp/webhook/
+ExecStart=/mnt/lnmp/webhook/webhook-handler
+Restart=always
+RestartSec=5s
+StandardOutput=file:/mnt/lnmp/webhook/devops.log
+StandardError=inherit
+
+[Install]
+WantedBy=multi-user.target

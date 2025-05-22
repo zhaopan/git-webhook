@@ -9,7 +9,7 @@ WorkingDirectory=/mnt/lnmp/webhook/
 ExecStart=/mnt/lnmp/webhook/webhook-handler
 Restart=always
 RestartSec=5s
-StandardOutput=file:/mnt/lnmp/webhook/devops.log
+StandardOutput=file:/mnt/lnmp/webhook/deploy.log
 StandardError=inherit
 
 [Install]

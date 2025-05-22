@@ -4,22 +4,42 @@
             "name": "zhaopan.api",
             "conf": {
                 "git_path": "/usr/bin/git",
-                "repo_path": "/mnt/www/webapi",
+                "repo_path": "/mnt/www/api",
                 "docker_compose_file": "docker-compose.yml",
                 "use_docker_compose": false,
                 "repo_branch": "master",
-                "build_bash": "npm update -g"
+                "bash_silent": false,
+                "commits_message_prefix": "sync",
+                "before_build_bash": "sync -arf",
+                "build_bash": "dotnet restore && dotnet build . && dotnet publish ."
             }
         },
         {
-            "name": "zhaopan.gogo",
+            "name": "zhaopan.web",
             "conf": {
                 "git_path": "/usr/bin/git",
-                "repo_path": "/mnt/www/gogo",
+                "repo_path": "/mnt/www/web",
                 "docker_compose_file": "docker-compose.yml",
                 "use_docker_compose": false,
                 "repo_branch": "dev",
-                "build_bash": "composer update"
+                "bash_silent": false,
+                "commits_message_prefix": "install",
+                "before_build_bash": "pnpm install",
+                "build_bash": "pnpm dev && pnpm build"
+            }
+        },
+        {
+            "name": "zhaopan.grpc",
+            "conf": {
+                "git_path": "/usr/bin/git",
+                "repo_path": "/mnt/www/grpc",
+                "docker_compose_file": "docker-compose.yml",
+                "use_docker_compose": false,
+                "repo_branch": "dev",
+                "bash_silent": false,
+                "commits_message_prefix": "tidy",
+                "before_build_bash": "go mod tidy",
+                "build_bash": "go build -o grpc -mod=vendor"
             }
         }
     ]

@@ -30,4 +30,10 @@ config.json
 .vscode
 .zed
 
+# Log
 deploy.log
+
+# build
+webhook-handler
+webhook.exe
+webhook

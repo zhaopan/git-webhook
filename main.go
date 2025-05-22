@@ -3,6 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/joho/godotenv"
 	"io"
 	"log"
 	"net/http"
@@ -12,10 +15,6 @@ import (
 	"runtime"       // 导入 runtime 包以获取操作系统信息
 	"strings"
 	"sync" // 仍然需要 sync 包来使用 Mutex
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/joho/godotenv" // 用于加载 .env 文件
 )
 
 // Config 存储通用配置信息，不再包含 Applications
@@ -34,6 +33,7 @@ type AppConf struct {
 	GitPath              string `json:"git_path"`               // git 可执行文件路径 (例如: "C:\\Program Files\\Git\\cmd\\git.exe" 或 "/usr/bin/git")
 	CommitsMessagePrefix string `json:"commits_message_prefix"` // 提交信息前缀，如果匹配则执行 before_build_bash
 	BeforeBuildBash      string `json:"before_build_bash"`      // 在 build_bash 之前执行的脚本
+	BashSilent           bool   `json:"bash_silent"`            // 新增：控制 bash 命令是否静默输出
 }
 
 // JsonAppEntry 对应 JSON 中 applications 数组的每个元素
@@ -57,6 +57,7 @@ type ApplicationConfig struct {
 	GitPath              string
 	CommitsMessagePrefix string
 	BeforeBuildBash      string
+	BashSilent           bool // 新增字段
 }
 
 // 全局变量存储应用配置
@@ -72,7 +73,7 @@ func main() {
 	// 首先判断是否启用文件日志
 	// 注意：为了让 getEnvAsBool 正常工作，godotenv.Load() 应该在日志设置之前
 	// 但为了日志本身能记录 godotenv.Load() 的错误，这里采取先加载 godotenv，再设置日志输出的方式
-	// 这样，即使 godotenv.Load 失败，至少错误信息也会在 os.Stdout 输出
+	// 这样，即使 godotenv.Load 为空，至少错误信息也会在 os.Stdout 输出
 	err := godotenv.Load()
 	if err != nil {
 		log.Printf("Warning: .env file not found or could not be loaded: %v. Using environment variables directly.", err)
@@ -144,6 +145,7 @@ func main() {
 			GitPath:              appEntry.Conf.GitPath,
 			CommitsMessagePrefix: appEntry.Conf.CommitsMessagePrefix,
 			BeforeBuildBash:      appEntry.Conf.BeforeBuildBash,
+			BashSilent:           appEntry.Conf.BashSilent, // 新增赋值
 		}
 		log.Printf("  Loaded app: %s (normalized to %s) with config: %+v", appEntry.Name, appName, appConfigMap[appName])
 
@@ -164,7 +166,8 @@ func main() {
 	})
 
 	log.Printf("Server starting on port %s...", generalConfig.Port)
-	log.Printf("Current operating system: %s", runtime.GOOS) // 打印当前操作系统
+	log.Printf("Current operating system: %s", runtime.GOOS)                    // 打印当前操作系统
+	log.Printf("Go program's PATH environment variable: %s", os.Getenv("PATH")) // 打印程序启动时的 PATH
 	log.Fatal(http.ListenAndServe(":"+generalConfig.Port, r))
 }
 
@@ -313,12 +316,19 @@ func handleWebhook(w http.ResponseWriter, r *http.Request, secret string) {
 }
 
 // runCommand 在指定目录下运行命令并记录输出
-func runCommand(dir string, name string, arg ...string) error {
+// 新增 silent 参数，控制命令输出是否静默
+func runCommand(dir string, name string, silent bool, arg ...string) error { // 修正参数列表顺序
 	cmd := exec.Command(name, arg...)
 	cmd.Dir = dir
-	cmd.Stdout = os.Stdout // 将命令的标准输出直接输出到程序的标准输出
-	cmd.Stderr = os.Stderr // 将命令的标准错误直接输出到程序的标准错误
-	log.Printf("Executing command: %s %v in %s", name, arg, dir)
+	log.Printf("Executing command: %s %v in %s (Silent: %t)", name, arg, dir, silent) // 打印静默状态
+
+	if silent {
+		cmd.Stdout = io.Discard // 静默输出到 /dev/null
+		cmd.Stderr = io.Discard // 静默错误输出到 /dev/null
+	} else {
+		cmd.Stdout = os.Stdout // 输出到程序的标准输出
+		cmd.Stderr = os.Stderr // 输出到程序的标准错误
+	}
 
 	err := cmd.Run()
 	if err != nil {
@@ -332,9 +342,10 @@ func runCommand(dir string, name string, arg ...string) error {
 func updateAndBuild(app ApplicationConfig, branchToPull string, commitMessages []string) error {
 	log.Println("Updating and building...")
 
-	gitPath := app.GitPath     // 直接使用 config.json 中提供的 git 路径
-	repoPath := app.RepoPath   // 直接使用 config.json 中提供的仓库路径
-	buildBash := app.BuildBash // 直接使用 config.json 中提供的构建脚本
+	gitPath := app.GitPath       // 直接使用 config.json 中提供的 git 路径
+	repoPath := app.RepoPath     // 直接使用 config.json 中提供的仓库路径
+	buildBash := app.BuildBash   // 直接使用 config.json 中提供的构建脚本
+	bashSilent := app.BashSilent // 获取静默配置
 
 	// 如果 gitPath 为空，提供一个 OS 默认值
 	if gitPath == "" {
@@ -407,13 +418,15 @@ func updateAndBuild(app ApplicationConfig, branchToPull string, commitMessages [
 
 	// 1. 切换到目标分支
 	log.Printf("Changing to repository directory: %s", repoPath)
-	if err := runCommand(repoPath, gitPath, "checkout", branchToPull); err != nil {
+	// git checkout 命令的输出通常不希望被静默，因为它可能包含重要信息
+	if err := runCommand(repoPath, gitPath, false, "checkout", branchToPull); err != nil { // 调整参数顺序
 		return fmt.Errorf("git checkout %s failed: %w", branchToPull, err)
 	}
 	log.Printf("Successfully checked out branch: %s", branchToPull)
 
 	// 2. 拉取最新代码
-	if err := runCommand(repoPath, gitPath, "pull"); err != nil {
+	// git pull 命令的输出通常不希望被静默
+	if err := runCommand(repoPath, gitPath, false, "pull"); err != nil { // 调整参数顺序
 		return fmt.Errorf("git pull failed: %w", err)
 	}
 	log.Println("Successfully pulled latest code.")
@@ -431,7 +444,7 @@ func updateAndBuild(app ApplicationConfig, branchToPull string, commitMessages [
 	}
 
 	if shouldRunBeforeBuild && app.BeforeBuildBash != "" {
-		log.Printf("Executing before_build script: %s", app.BeforeBuildBash)
+		log.Printf("Executing before_build script: %s (Silent: %t)", app.BeforeBuildBash, bashSilent)
 		var cmdName string
 		var cmdArgs []string
 
@@ -447,7 +460,7 @@ func updateAndBuild(app ApplicationConfig, branchToPull string, commitMessages [
 			return fmt.Errorf("unsupported OS for before_build script: %s", runtime.GOOS)
 		}
 
-		if err := runCommand(repoPath, cmdName, cmdArgs...); err != nil {
+		if err := runCommand(repoPath, cmdName, bashSilent, cmdArgs...); err != nil { // 调整参数顺序
 			return fmt.Errorf("before_build script '%s' failed: %w", app.BeforeBuildBash, err)
 		}
 		log.Println("Before_build script executed successfully.")
@@ -460,7 +473,7 @@ func updateAndBuild(app ApplicationConfig, branchToPull string, commitMessages [
 
 	// 3. 执行主构建脚本（如果提供）
 	if buildBash != "" {
-		log.Printf("Executing main build script: %s", buildBash)
+		log.Printf("Executing main build script: %s (Silent: %t)", buildBash, bashSilent)
 		var cmdName string
 		var cmdArgs []string
 
@@ -476,7 +489,7 @@ func updateAndBuild(app ApplicationConfig, branchToPull string, commitMessages [
 			return fmt.Errorf("unsupported OS for main build script: %s", runtime.GOOS)
 		}
 
-		if err := runCommand(repoPath, cmdName, cmdArgs...); err != nil {
+		if err := runCommand(repoPath, cmdName, bashSilent, cmdArgs...); err != nil { // 调整参数顺序
 			return fmt.Errorf("main build script '%s' failed: %w", buildBash, err)
 		}
 		log.Println("Main build script executed successfully.")
@@ -491,7 +504,8 @@ func updateAndBuild(app ApplicationConfig, branchToPull string, commitMessages [
 		if dockerComposeFile == "" {
 			dockerComposeFile = "docker-compose.yml" // 默认文件名
 		}
-		if err := restartContainer(repoPath, dockerComposeFile); err != nil {
+		// docker-compose 命令的输出通常不希望被静默，因为它可能包含重要信息
+		if err := restartContainer(repoPath, dockerComposeFile, false); err != nil { // 传入 false
 			return fmt.Errorf("failed to restart container with docker-compose: %w", err)
 		}
 		log.Println("Container restarted successfully.")
@@ -501,18 +515,25 @@ func updateAndBuild(app ApplicationConfig, branchToPull string, commitMessages [
 }
 
 // restartContainer 使用 docker-compose 重启服务
-func restartContainer(repoPath string, dockerComposeFile string) error {
-	log.Println("Restarting container...")
+// 新增 silent 参数，控制命令输出是否静默
+func restartContainer(repoPath string, dockerComposeFile string, silent bool) error { // 修正参数列表
+	log.Printf("Restarting container (Silent: %t)...", silent)
 	// 使用 docker-compose 重启服务
 	cmd := exec.Command("docker-compose", "-f", dockerComposeFile, "up", "-d")
 	cmd.Dir = repoPath // 确保在正确的目录下执行 docker-compose
-	output, err := cmd.CombinedOutput()
+
+	if silent {
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
+
+	err := cmd.Run()
 	if err != nil {
-		log.Printf("docker-compose output: %s", output)
 		return fmt.Errorf("docker-compose up -d failed: %w", err)
 	}
-	log.Printf("docker-compose output: %s", output)
-	log.Println("Container restarted successfully")
 	return nil
 }
 

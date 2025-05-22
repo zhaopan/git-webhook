@@ -3,6 +3,7 @@
         {
             "name": "zhaopan.api",
             "conf": {
+                "git_path": "/usr/bin/git",
                 "repo_path": "/mnt/www/webapi",
                 "docker_compose_file": "docker-compose.yml",
                 "use_docker_compose": false,
@@ -13,6 +14,7 @@
         {
             "name": "zhaopan.gogo",
             "conf": {
+                "git_path": "/usr/bin/git",
                 "repo_path": "/mnt/www/gogo",
                 "docker_compose_file": "docker-compose.yml",
                 "use_docker_compose": false,

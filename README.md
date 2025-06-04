@@ -104,6 +104,16 @@ go build -o webhook-handler -mod=vendor
 # run test
 ./webhook-handler
 
+# PATH
+root@linux:~# which pnpm
+/root/.nvm/versions/node/v22.15.1/bin/pnpm
+root@linux:~# which git
+/usr/bin/git
+
+# 将git和pnpm的路径写入到 webhook-handler.service . Environment
+
+# 一旦修改了 webhook-handler.service 就要刷新服务
+
 # serverd conf
 cp webhook-handler.service /etc/systemd/system/webhook-handler.service
 

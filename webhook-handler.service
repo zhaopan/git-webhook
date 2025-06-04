@@ -11,6 +11,7 @@ Restart=always
 RestartSec=5s
 StandardOutput=file:/mnt/lnmp/webhook/deploy.log
 StandardError=inherit
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.nvm/versions/node/v22.15.1/bin"
 
 [Install]
 WantedBy=multi-user.target
